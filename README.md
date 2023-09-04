@@ -8,3 +8,9 @@ which facilitates ranking the hypotheses in the order of their likelihood of bei
 the evidence measures as long as the studies control their respective FDR at the desired levels. Furthermore, IRT synthesizes inferences from diverse studies irrespective 
 of the underlying multiple testing algorithms employed by them.
 
+References
+=======
+[1.] Harnessing The Collective Wisdom: Fusion Learning Using Decision Sequences From Diverse Sources (https://arxiv.org/abs/2308.11026)
+Banerjee T, Gang B and He J. (under review).
+
+
