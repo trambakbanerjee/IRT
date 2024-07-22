@@ -1,29 +1,31 @@
 
-source('funcs.R')
-
 library(Rfast)
 library(poolr)
 
+source('funcs.R')
 
-#case 2: dependent agents
-d = 5
+d = 10
 m = 1000
-reps = 500
-alph = 0.1
+reps = 200
+alph = 0.005
 null_prop = 0.8
+null_lb = 0.5
 rho1 = 0
-rho2_vec = c(-0.2,-0.1,0,0.1,0.3,0.5,0.7,0.9)
+rho2_vec = c(-0.1,0,0.1,0.3,0.5,0.7,0.9)
 
-am_mean_fdp = fedeval_mean_fdp = p2e_mean_fdp = fed_naive_fdp = pooled_fdp = matrix(0,reps,length(rho2_vec))
-am_mean_etp = fedeval_mean_etp = p2e_mean_etp = fed_naive_etp = pooled_etp = matrix(0,reps,length(rho2_vec))
+ehybrid_fdp = e_fdp = eprod_fdp = p2e_fdp = p2eprod_fdp = pooled_fdp = matrix(0,reps,length(rho2_vec))
+ehybrid_etp = e_etp = eprod_etp = p2e_etp = p2eprod_etp = pooled_etp = matrix(0,reps,length(rho2_vec))
 
 nd = d
+d1 = floor(nd/2)
+d2 = nd-d1
 for(rr in 1:length(rho2_vec)){
   
   rho2 = rho2_vec[rr]
   alphd = rep(0.01,nd)
-  U = chol(rho1*matrix(1,m,m)+(1-rho1)*diag(m))
-  V = chol(rho2*matrix(1,nd,nd)+(1-rho2)*diag(nd))
+  U1 = chol(rho1*matrix(1,m,m)+(1-rho1)*diag(m))
+  V1 = chol(rho2*matrix(1,d1,d1)+(1-rho2)*diag(d1))
+  V2 = diag(d2)
   
   for(r in 1:reps){
     set.seed(r)
@@ -33,7 +35,9 @@ for(rr in 1:length(rho2_vec)){
                   rnorm(1,3,1)*(p[i]>0.9))
     MU = t(sapply(1:m,function(i) rep(mu[i],nd)))
     theta = 1*(p>null_prop)
-    x = MU+t(U)%*%y%*%V
+    x1 = MU[,1:d1]+t(U1)%*%y[,1:d1]%*%V1
+    x2 = MU[,(d1+1):nd]+t(U1)%*%y[,(d1+1):nd]%*%V2
+    x = cbind(x1,x2)
     pvals = sapply(1:nd,function(i) 2*pnorm(-abs(x[,i]),0,1))
     bh_decisions =  sapply(1:nd,function(i) bh.func(pvals[,i],alphd[i])$de)
     
@@ -41,18 +45,36 @@ for(rr in 1:length(rho2_vec)){
     
     fedeval_mean = rowmeans(estat)
     ebh = ebh.func(fedeval_mean,alph)
-    fedeval_mean_fdp[r,rr] = sum((1-theta)*ebh$de)/max(sum(ebh$de),1)
-    fedeval_mean_etp[r,rr] = sum(theta*ebh$de)/max(sum(theta),1)
-    
-    count_decisions = rowsums(bh_decisions)
-    naive_decisions = sapply(1:m,function(i) 1*(count_decisions[i]>=(nd/2)))
-    fed_naive_fdp[r,rr] = sum((1-theta)*naive_decisions)/max(sum(naive_decisions),1)
-    fed_naive_etp[r,rr] = sum(theta*naive_decisions)/max(sum(theta),1)
+    e_fdp[r,rr] = sum((1-theta)*ebh$de)/max(sum(ebh$de),1)
+    e_etp[r,rr] = sum(theta*ebh$de)/max(sum(theta),1)
     
     pooled_pvals = sapply(1:m,function(i) fisher(pvals[i,])$p)
     bh_pooled = bh.func(pooled_pvals,alph)$de
     pooled_fdp[r,rr] = sum((1-theta)*bh_pooled)/max(sum(bh_pooled),1)
     pooled_etp[r,rr] = sum(theta*bh_pooled)/max(sum(theta),1)
+    
+    ###### ---- calculating the product e-values ---- #######
+    estat_prod = matrix(0,m,1)
+    for(ii in 1:m){
+      ee = null_lb*estat[ii,]
+      if(max(ee)>0){
+        tt = rep(0,nd)
+        tt[1] = mean(ee)
+        tt[nd] = prod(ee)
+        for(j in 2:(nd-1)){
+          
+          combs = comb_n(nd,j)
+          ncols = ncol(combs)
+          tt[j] = mean(unlist(lapply(1:ncols,function(i) prod(ee[combs[,i]]))))
+        }
+        estat_prod[ii] = mean(tt[-1])
+      }
+    }
+    
+    ebh_prod = ebh.func(estat_prod,alph)#ebh.func(fedeval_mean,alph)
+    eprod_fdp[r,rr] = sum((1-theta)*ebh_prod$de)/max(sum(ebh_prod$de),1)
+    eprod_etp[r,rr] = sum(theta*ebh_prod$de)/max(sum(theta),1)
+    ##########################################################
     
     ##### p2e ###############################
     p2e = matrix(0,m,nd)
@@ -64,16 +86,65 @@ for(rr in 1:length(rho2_vec)){
     }
     p2e_mean = rowmeans(p2e)
     ebh_p2e = ebh.func(p2e_mean,alph)
-    p2e_mean_fdp[r,rr] = sum((1-theta)*ebh_p2e$de)/max(sum(ebh_p2e$de),1)
-    p2e_mean_etp[r,rr] = sum(theta*ebh_p2e$de)/max(sum(theta),1)
+    p2e_fdp[r,rr] = sum((1-theta)*ebh_p2e$de)/max(sum(ebh_p2e$de),1)
+    p2e_etp[r,rr] = sum(theta*ebh_p2e$de)/max(sum(theta),1)
     ###########################################
-    ######## Harmonic Mean p-value
-    am_pvals = log(d)*sapply(1:m,function(i) d/sum(1/pvals[i,]))
-    ebh_am = ebh.func(am_pvals,alph)
-    am_mean_fdp[r,rr] = sum((1-theta)*ebh_am$de)/max(sum(ebh_am$de),1)
-    am_mean_etp[r,rr] = sum(theta*ebh_am$de)/max(sum(theta),1)
+    ###### ---- calculating the product P2E ---- #######
+    p2e_prod = matrix(0,m,1)
+    for(ii in 1:m){
+      ee = p2e[ii,]
+      if(max(ee)>0){
+        tt = rep(0,nd)
+        tt[1] = mean(ee)
+        tt[nd] = prod(ee)
+        for(j in 2:(nd-1)){
+          
+          combs = comb_n(nd,j)
+          ncols = ncol(combs)
+          tt[j] = mean(unlist(lapply(1:ncols,function(i) prod(ee[combs[,i]]))))
+          
+        }
+        p2e_prod[ii] = mean(tt[-1])
+      }
+    }
     
-    ###################################
+    ebh_p2eprod = ebh.func(p2e_prod,alph)
+    p2eprod_fdp[r,rr] = sum((1-theta)*ebh_p2eprod$de)/max(sum(ebh_p2eprod$de),1)
+    p2eprod_etp[r,rr] = sum(theta*ebh_p2eprod$de)/max(sum(theta),1)
+    ##########################################################
+    
+    ###########################################
+    ###### ---- calculating the IRT H ---- #######
+    estat_1 = m*sapply(1:d1,function(i) bh_decisions[,i]/(alphd[i]*max(sum(bh_decisions[,i],1))))
+    fedeval_mean_1 = rowmeans(estat_1)
+    estat_prod_2 = matrix(0,m,1)
+    for(ii in 1:m){
+      ee = null_lb*estat[ii,(d1+1):nd]
+      if(max(ee)>0){
+        if(d2 == 1){
+          estat_prod_2[ii] = ee
+        } else if(d2 == 2){
+          estat_prod_2[ii] = mean(mean(ee),prod(ee))
+        } else{
+          tt = rep(0,d2)
+          tt[1] = mean(ee)
+          tt[d2] = prod(ee)
+          for(j in 2:(d2-1)){
+            
+            combs = comb_n(d2,j)
+            ncols = ncol(combs)
+            tt[j] = mean(unlist(lapply(1:ncols,function(i) prod(ee[combs[,i]]))))
+            
+          }
+          estat_prod_2[ii] = mean(tt[-1])
+        }
+      }
+    }
+    ehybrid = sapply(1:m,function(i) (d1/nd)*fedeval_mean_1[i]+(d2/nd)*estat_prod_2[i])
+    ebh = ebh.func(ehybrid,alph)
+    ehybrid_fdp[r,rr] = sum((1-theta)*ebh$de)/max(sum(ebh$de),1)
+    ehybrid_etp[r,rr] = sum(theta*ebh$de)/max(sum(theta),1)
+    ##########################################################
     print(r)
   }
 }
@@ -82,17 +153,17 @@ library(ggplot2)
 library(ggpubr)
 library(latex2exp)
 
-plotdata1<- as.data.frame(c(colmeans(fedeval_mean_fdp),colmeans(p2e_mean_fdp),
-                            colmeans(pooled_fdp),
-                            colmeans(fed_naive_fdp),
-                            colmeans(am_mean_fdp)))
+plotdata1<- as.data.frame(c(colmeans(e_fdp),colmeans(eprod_fdp),
+                            colmeans(ehybrid_fdp),
+                            colmeans(p2e_fdp),colmeans(p2eprod_fdp),
+                            colmeans(pooled_fdp)))
 names(plotdata1)<-"FDR"
-plotdata1$type<-as.factor(rep(c('IRT','P2E','Fisher','Naive','HM'),each=length(rho2_vec)))
-plotdata1$d<- rep(rho2_vec,5)
+plotdata1$type<-as.factor(rep(c('IRT','IRT*','IRT H','P2E','P2E*','Fisher'),each=length(rho2_vec)))
+plotdata1$d<- rep(rho2_vec,6)
 g1<-ggplot()+geom_line(data=plotdata1,aes(x=d,y=FDR,color=type),size=1)+
   geom_point(data=plotdata1,aes(x=d,y=FDR,color=type,shape=type),size=4,fill=NA)+
-  geom_hline(yintercept = 0.1,linetype='dotted', size=1,col = 'black')+
-  scale_y_continuous(limits = c(0,0.2))+
+  geom_hline(yintercept = alph,linetype='dotted', size=1,col = 'black')+
+  scale_y_continuous(limits = c(0,2*alph))+
   ylab('FDP')+theme_bw()+xlab(TeX('$\\rho$'))+
   theme(legend.position='top',legend.title=element_blank(),
         legend.background = element_rect(fill="white",
@@ -105,13 +176,13 @@ g1<-ggplot()+geom_line(data=plotdata1,aes(x=d,y=FDR,color=type),size=1)+
         panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank())
 
-plotdata2<- as.data.frame(c(colmeans(fedeval_mean_etp),colmeans(p2e_mean_etp),
-                            colmeans(pooled_etp),
-                            colmeans(fed_naive_etp),
-                            colmeans(am_mean_etp)))
+plotdata2<- as.data.frame(c(colmeans(e_etp),colmeans(eprod_etp),
+                            colmeans(ehybrid_etp),
+                            colmeans(p2e_etp),colmeans(p2eprod_etp),
+                            colmeans(pooled_etp)))
 names(plotdata2)<-"etp"
-plotdata2$type<-as.factor(rep(c('IRT','P2E','Fisher','Naive','HM'),each=length(rho2_vec)))
-plotdata2$d<- rep(rho2_vec,5)
+plotdata2$type<-as.factor(rep(c('IRT','IRT*','IRT H','P2E','P2E*','Fisher'),each=length(rho2_vec)))
+plotdata2$d<- rep(rho2_vec,6)
 g2<-ggplot()+geom_line(data=plotdata2,aes(x=d,y=etp,color=type),size=1)+
   geom_point(data=plotdata2,aes(x=d,y=etp,color=type,shape=type),size=4,fill=NA)+
   ylab('ETP')+theme_bw()+xlab(TeX('$\\rho$'))+
