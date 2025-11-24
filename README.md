@@ -10,7 +10,6 @@ of the underlying multiple testing algorithms employed by them.
 
 References
 =======
-[1.] Harnessing The Collective Wisdom: Fusion Learning Using Decision Sequences From Diverse Sources (https://arxiv.org/abs/2308.11026)
-Banerjee T, Gang B and He J. (under review).
+[1.] Banerjee, Trambak, Bowen Gang, and Jianliang He. "Harnessing the collective wisdom: Fusion learning using decision sequences from diverse sources." Biometrika (2025): asaf080. (https://arxiv.org/abs/2308.11026)
 
 
